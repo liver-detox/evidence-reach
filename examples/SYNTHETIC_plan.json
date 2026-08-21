@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "as_of_date": "2030-01-01",
+  "analysis": {
+    "effect": 2.0,
+    "difference_sd": 8.0,
+    "alpha": 0.05,
+    "target_power": 0.8,
+    "comparison_count": 1
+  },
+  "sampling": {
+    "current_matured_n": 5,
+    "pending_batches": [
+      {"count": 3, "maturity_date": "2030-02-15"}
+    ],
+    "maturity_lag_days": 28,
+    "collection_end_date": "2030-07-01"
+  },
+  "horizons_days": [90, 180, 365],
+  "scenarios": [
+    {"id": "SYNTHETIC_LOW", "eligible_units_per_30_days": 2.0},
+    {"id": "SYNTHETIC_BASE", "eligible_units_per_30_days": 4.0},
+    {"id": "SYNTHETIC_HIGH", "eligible_units_per_30_days": 6.0}
+  ]
+}

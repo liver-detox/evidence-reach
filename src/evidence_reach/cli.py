@@ -1,0 +1,148 @@
+"""Command-line adapter for deterministic EvidenceReach assessments."""
+
+import argparse
+import csv
+import io
+import json
+from pathlib import Path
+import sys
+from typing import Sequence
+
+from .core import PlanValidationError, assess
+
+
+CSV_FIELDS = (
+    "scenario_id",
+    "horizon_days",
+    "horizon_date",
+    "scenario_implied_matured_n",
+    "required_n",
+    "state",
+    "earliest_target_date",
+)
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = _ArgumentParser(prog="evidence-reach", add_help=False)
+    commands = parser.add_subparsers(dest="command", required=True)
+    assess_parser = commands.add_parser("assess", add_help=False)
+    assess_parser.add_argument("--plan", required=True)
+    assess_parser.add_argument("--out", required=True)
+    return parser
+
+
+def _render_csv(result: dict[str, object]) -> bytes:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(CSV_FIELDS)
+    for row in result["reachability"]:
+        writer.writerow([row[field] for field in CSV_FIELDS])
+    return output.getvalue().encode("utf-8")
+
+
+def _display(value: object) -> str:
+    if value is None:
+        return "unavailable"
+    if isinstance(value, float):
+        return f"{value:.12g}"
+    return str(value)
+
+
+def _render_summary(result: dict[str, object]) -> bytes:
+    statistics = result["statistics"]
+    lines = [
+        "# EvidenceReach assessment",
+        "",
+        "## Statistics",
+        "",
+        f"- Current mature N: {_display(statistics['current_matured_n'])}",
+        f"- Required N: {_display(statistics['required_n'])}",
+        f"- Adjusted alpha: {_display(statistics['adjusted_alpha'])}",
+        f"- Current power: {_display(statistics['current_power'])}",
+        f"- Current MDE: {_display(statistics['current_mde'])}",
+        f"- Power at required N: {_display(statistics['power_at_required_n'])}",
+        "",
+        "## Scenario-implied reachability",
+        "",
+    ]
+    scenarios: dict[str, list[dict[str, object]]] = {}
+    for row in result["reachability"]:
+        scenarios.setdefault(str(row["scenario_id"]), []).append(row)
+    for scenario_id, rows in scenarios.items():
+        first = rows[0]
+        horizons = "; ".join(
+            "{horizon_days} days ({horizon_date}): N "
+            "{scenario_implied_matured_n}".format(
+                **{field: _display(row[field]) for field in CSV_FIELDS}
+            )
+            for row in rows
+        )
+        lines.append(
+            f"- {scenario_id}: scenario-implied mature N by horizon: "
+            f"{horizons}; {_display(first['state'])}; earliest target date "
+            f"{_display(first['earliest_target_date'])}."
+        )
+    lines.extend(["", "## Limitations", ""])
+    lines.extend(f"- {limitation}" for limitation in result["limitations"])
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _render_outputs(result: dict[str, object]) -> dict[str, bytes]:
+    return {
+        "assessment.json": (
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8"),
+        "reachability.csv": _render_csv(result),
+        "summary.md": _render_summary(result),
+    }
+
+
+def _write_outputs(output_directory: Path, outputs: dict[str, bytes]) -> None:
+    output_directory.mkdir(parents=True, exist_ok=True)
+    for name in ("assessment.json", "reachability.csv", "summary.md"):
+        (output_directory / name).write_bytes(outputs[name])
+
+
+def _error(message: str) -> int:
+    print(f"evidence-reach: {message}", file=sys.stderr)
+    return 1
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the single EvidenceReach command and return 0 or 1."""
+    try:
+        arguments = _parser().parse_args(argv)
+    except (SystemExit, ValueError):
+        return _error("invalid plan: command is required")
+
+    try:
+        plan_bytes = Path(arguments.plan).read_bytes()
+    except (OSError, ValueError):
+        return _error("unable to read plan")
+
+    try:
+        result = assess(plan_bytes)
+    except PlanValidationError as error:
+        return _error(f"invalid plan: {error}")
+    except Exception:
+        return _error("calculation failed")
+
+    try:
+        outputs = _render_outputs(result)
+    except Exception:
+        return _error("calculation failed")
+
+    try:
+        _write_outputs(Path(arguments.out), outputs)
+    except (OSError, ValueError):
+        return _error("unable to write results")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

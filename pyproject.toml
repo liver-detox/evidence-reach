@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evidence-reach"
+version = "0.1.0"
+description = "Join statistical power with deterministic evidence-supply reachability."
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+license = "Apache-2.0"
+authors = [{name = "liver-detox"}]
+dependencies = ["scipy>=1.18,<2"]
+
+[project.scripts]
+evidence-reach = "evidence_reach.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
