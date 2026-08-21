@@ -15,8 +15,8 @@ observations and precomputed paired differences use the same calculation.
 
 This is a planning and audit aid, not statistical advice or a judgement about
 evidence validity or independence. Reachability is scenario-implied,
-deterministic arithmetic—not a forecast. It makes no claim of a release, user
-adoption, external validation, or any return outcome.
+deterministic arithmetic—not a forecast. It makes no claim of user adoption,
+external validation, or any return outcome.
 
 ## Installation
 

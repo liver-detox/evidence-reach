@@ -1,6 +1,6 @@
 # EvidenceReach v0.1 Design
 
-- Status: implemented locally; publication pending
+- Status: public; v0.1.0 released 2026-08-22
 - Date: 2026-08-21
 - Public maintainer: `liver-detox`
 - License: Apache License 2.0
