@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import sys
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import tempfile
 import unittest
@@ -661,6 +661,59 @@ class CliTest(unittest.TestCase):
                 ["assess", "--plan", str(plan_path), "--out", str(output_path)]
             )
         return status, stderr.getvalue()
+
+    def run_main_with_streams(self, argv: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            status = main(argv)
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_top_level_help_shows_the_assess_command(self) -> None:
+        status, stdout, stderr = self.run_main_with_streams(["--help"])
+
+        self.assertEqual(status, 0)
+        self.assertIn("usage: evidence-reach", stdout)
+        self.assertIn("assess", stdout)
+        self.assertEqual(stderr, "")
+
+    def test_assess_help_shows_required_options(self) -> None:
+        status, stdout, stderr = self.run_main_with_streams(["assess", "--help"])
+
+        self.assertEqual(status, 0)
+        self.assertIn("usage: evidence-reach assess", stdout)
+        self.assertIn("--plan", stdout)
+        self.assertIn("--out", stdout)
+        self.assertEqual(stderr, "")
+
+    def test_missing_required_options_name_only_the_missing_option(self) -> None:
+        missing_plan = self.run_main_with_streams(
+            ["assess", "--out", "OUT_SENTINEL"]
+        )
+        missing_out = self.run_main_with_streams(
+            ["assess", "--plan", "PLAN_SENTINEL"]
+        )
+
+        self.assertEqual(missing_plan, (1, "", "evidence-reach: missing required argument: --plan\n"))
+        self.assertNotIn("OUT_SENTINEL", missing_plan[2])
+        self.assertEqual(missing_out, (1, "", "evidence-reach: missing required argument: --out\n"))
+        self.assertNotIn("PLAN_SENTINEL", missing_out[2])
+
+    def test_unknown_option_uses_safe_invalid_arguments_message(self) -> None:
+        result = self.run_main_with_streams(
+            [
+                "assess",
+                "--plan",
+                "PLAN_SENTINEL",
+                "--out",
+                "OUT_SENTINEL",
+                "--unexpected",
+                "UNKNOWN_SENTINEL",
+            ]
+        )
+
+        self.assertEqual(result, (1, "", "evidence-reach: invalid arguments\n"))
+        self.assertNotIn("UNKNOWN_SENTINEL", result[2])
 
     def test_success_writes_three_deterministic_documented_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

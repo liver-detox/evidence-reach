@@ -28,9 +28,9 @@ class _ArgumentParser(argparse.ArgumentParser):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = _ArgumentParser(prog="evidence-reach", add_help=False)
+    parser = _ArgumentParser(prog="evidence-reach")
     commands = parser.add_subparsers(dest="command", required=True)
-    assess_parser = commands.add_parser("assess", add_help=False)
+    assess_parser = commands.add_parser("assess")
     assess_parser.add_argument("--plan", required=True)
     assess_parser.add_argument("--out", required=True)
     return parser
@@ -113,12 +113,23 @@ def _error(message: str) -> int:
     return 1
 
 
+def _argument_error(message: str) -> int:
+    required_prefix = "the following arguments are required: "
+    if message.startswith(required_prefix):
+        missing = message.removeprefix(required_prefix)
+        label = "argument" if ", " not in missing else "arguments"
+        return _error(f"missing required {label}: {missing}")
+    return _error("invalid arguments")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the single EvidenceReach command and return 0 or 1."""
     try:
         arguments = _parser().parse_args(argv)
-    except (SystemExit, ValueError):
-        return _error("invalid plan: command is required")
+    except SystemExit as error:
+        return 0 if error.code == 0 else _error("invalid arguments")
+    except ValueError as error:
+        return _argument_error(str(error))
 
     try:
         plan_bytes = Path(arguments.plan).read_bytes()

@@ -5,8 +5,8 @@ Copyright 2026 liver-detox
 EvidenceReach helps researchers decide whether a stated evidence-supply plan
 can reach the mature sample size required for a two-sided one-sample test.
 
-**On the first run:** get the required N, each
-scenario's reachability state, and JSON, CSV, and Markdown results.
+**On the first run:** get the required N, each scenario's reachability state,
+and JSON, CSV, and Markdown results.
 
 ## Quickstart
 
@@ -23,6 +23,31 @@ The example uses invented values and creates `result/assessment.json`,
 `result/reachability.csv`, and `result/summary.md`: the complete
 machine-readable assessment, one row per scenario and horizon, and a short
 interpretation.
+
+## Adapt a plan
+
+Copy the synthetic plan, replace its invented values, and run your own
+assessment:
+
+```bash
+cp examples/SYNTHETIC_plan.json my-plan.json
+evidence-reach assess --plan my-plan.json --out result
+```
+
+- In `analysis`, `effect` and `difference_sd` use the same unit. `alpha` and
+  `target_power` are between zero and one; `comparison_count` is the fixed
+  comparison family size.
+- In `sampling`, `current_matured_n` is the count you judge analyzable.
+  `pending_batches` contain already-collected units and their final
+  `maturity_date`; `maturity_lag_days` applies to new collection and
+  `collection_end_date` ends it.
+- `horizons_days` lists increasing future calendar-day checkpoints. Each named
+  scenario supplies its assumed `eligible_units_per_30_days`.
+
+For paired work, first turn every pair into one difference. Use its target mean
+as `effect` and the standard deviation of those differences as
+`difference_sd`. Use `evidence-reach --help` or `evidence-reach assess --help`
+for the available command and required options.
 
 ## The decision it supports
 
@@ -76,7 +101,9 @@ and one required-N comparison evaluated with webR 0.6.0 / R 4.6.0 on
 2026-08-21. The power values matched to 12 decimal places within the recorded
 `2e-6` tolerance; the required-N case produced a ceiling of 34. The test file
 also identifies statsmodels as a second public comparison route, but does not
-claim an exact local statsmodels verification.
+claim an exact local statsmodels verification. See
+[validation notes](docs/validation.md) for the detailed method and frozen
+references.
 
 ## Dependency and license
 
