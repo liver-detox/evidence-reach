@@ -5,6 +5,9 @@ Copyright 2026 liver-detox
 EvidenceReach helps researchers decide whether a stated evidence-supply plan
 can reach the mature sample size required for a two-sided one-sample test.
 
+In an optional three-tool workflow, EvidenceReach is the planning step: can we
+collect enough mature evidence?
+
 **On the first run:** get the required N, each scenario's reachability state,
 and JSON, CSV, and Markdown results.
 
