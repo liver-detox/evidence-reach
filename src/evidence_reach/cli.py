@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from .core import PlanValidationError, assess
+from .core import PlanValidationError, _summary_rows_for_assessed_plan, assess
 
 
 CSV_FIELDS = (
@@ -53,10 +53,38 @@ def _display(value: object) -> str:
     return str(value)
 
 
-def _render_summary(result: dict[str, object]) -> bytes:
+def _render_summary(
+    result: dict[str, object], summary_rows: list[dict[str, object]]
+) -> bytes:
     statistics = result["statistics"]
     lines = [
         "# EvidenceReach assessment",
+        "",
+        "## Decision summary",
+        "",
+    ]
+    for row in summary_rows:
+        earliest_target_date = row["earliest_target_date"]
+        earliest_text = (
+            "not reached within term"
+            if earliest_target_date is None
+            else _display(earliest_target_date)
+        )
+        lines.append(
+            "- {scenario_id}: required N {required_n}; scenario-implied mature N "
+            "at the end of the collection-and-maturity term ({term_end_date}) "
+            "{mature_n_at_term_end}; gap {mature_n_gap}; earliest target date "
+            "{earliest_target_date}.".format(
+                **{
+                    field: _display(value)
+                    for field, value in {
+                        **row,
+                        "earliest_target_date": earliest_text,
+                    }.items()
+                }
+            )
+        )
+    lines.extend([
         "",
         "## Statistics",
         "",
@@ -69,12 +97,17 @@ def _render_summary(result: dict[str, object]) -> bytes:
         "",
         "## Scenario-implied reachability",
         "",
-    ]
+    ])
     scenarios: dict[str, list[dict[str, object]]] = {}
     for row in result["reachability"]:
         scenarios.setdefault(str(row["scenario_id"]), []).append(row)
     for scenario_id, rows in scenarios.items():
         first = rows[0]
+        earliest_target_date = (
+            "not reached within term"
+            if first["earliest_target_date"] is None
+            else _display(first["earliest_target_date"])
+        )
         horizons = "; ".join(
             "{horizon_days} days ({horizon_date}): N "
             "{scenario_implied_matured_n}".format(
@@ -85,20 +118,22 @@ def _render_summary(result: dict[str, object]) -> bytes:
         lines.append(
             f"- {scenario_id}: scenario-implied mature N by horizon: "
             f"{horizons}; {_display(first['state'])}; earliest target date "
-            f"{_display(first['earliest_target_date'])}."
+            f"{earliest_target_date}."
         )
     lines.extend(["", "## Limitations", ""])
     lines.extend(f"- {limitation}" for limitation in result["limitations"])
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def _render_outputs(result: dict[str, object]) -> dict[str, bytes]:
+def _render_outputs(
+    result: dict[str, object], summary_rows: list[dict[str, object]]
+) -> dict[str, bytes]:
     return {
         "assessment.json": (
             json.dumps(result, ensure_ascii=False, indent=2) + "\n"
         ).encode("utf-8"),
         "reachability.csv": _render_csv(result),
-        "summary.md": _render_summary(result),
+        "summary.md": _render_summary(result, summary_rows),
     }
 
 
@@ -144,7 +179,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _error("calculation failed")
 
     try:
-        outputs = _render_outputs(result)
+        summary_rows = _summary_rows_for_assessed_plan(
+            plan_bytes,
+            required_n=result["statistics"]["required_n"],
+            reachability_rows=result["reachability"],
+        )
+        outputs = _render_outputs(result, summary_rows)
     except Exception:
         return _error("calculation failed")
 

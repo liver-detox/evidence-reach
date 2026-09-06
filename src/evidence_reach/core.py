@@ -13,7 +13,12 @@ from .power import (
     one_sample_t_power,
     required_sample_size,
 )
-from .reachability import PendingBatch, Scenario, build_reachability_rows
+from .reachability import (
+    PendingBatch,
+    Scenario,
+    build_reachability_rows,
+    build_summary_rows,
+)
 
 
 class PlanValidationError(ValueError):
@@ -407,3 +412,34 @@ def assess(plan_bytes: bytes) -> dict[str, object]:
         ],
     }
     return _round_floats(result)
+
+
+def _summary_rows_for_assessed_plan(
+    plan_bytes: bytes,
+    *,
+    required_n: int,
+    reachability_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Build display-only term-end rows after the plan has passed assessment.
+
+    Reuse first-passing dates from the completed reachability calculation so
+    rendering the Markdown file does not search each scenario's term again.
+    """
+    plan = _validate_plan(_decode_plan(plan_bytes))
+    earliest_target_dates: dict[str, str | None] = {}
+    for row in reachability_rows:
+        scenario_id = str(row["scenario_id"])
+        earliest_target_dates.setdefault(
+            scenario_id,
+            row["earliest_target_date"],
+        )
+    return build_summary_rows(
+        as_of_date=plan["as_of_date"],
+        collection_end_date=plan["collection_end_date"],
+        maturity_lag_days=plan["maturity_lag_days"],
+        current_matured_n=plan["current_matured_n"],
+        pending_batches=plan["pending_batches"],
+        scenarios=plan["scenarios"],
+        required_n=required_n,
+        earliest_target_dates=earliest_target_dates,
+    )

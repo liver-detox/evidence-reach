@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
+from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,52 @@ class PendingBatch:
 class Scenario:
     id: str
     eligible_units_per_30_days: Decimal | float
+
+
+def _collection_and_maturity_end_date(
+    *,
+    collection_end_date: date,
+    maturity_lag_days: int,
+    pending_batches: tuple[PendingBatch, ...],
+) -> date:
+    """Return the last date included by the existing reachability term."""
+    end_date = collection_end_date + timedelta(days=maturity_lag_days)
+    if pending_batches:
+        end_date = max(end_date, max(batch.maturity_date for batch in pending_batches))
+    return end_date
+
+
+def _scenario_target_date(
+    *,
+    as_of_date: date,
+    collection_end_date: date,
+    maturity_lag_days: int,
+    current_matured_n: int,
+    pending_batches: tuple[PendingBatch, ...],
+    scenario: Scenario,
+    required_n: int,
+    search_end: date,
+) -> tuple[str, date | None]:
+    """Return the existing reachability state and first qualifying date."""
+    if current_matured_n >= required_n:
+        return "ALREADY_AT_REQUIRED_N", as_of_date
+
+    evaluation_date = as_of_date
+    while evaluation_date <= search_end:
+        if implied_matured_n(
+            evaluation_date=evaluation_date,
+            as_of_date=as_of_date,
+            collection_end_date=collection_end_date,
+            maturity_lag_days=maturity_lag_days,
+            current_matured_n=current_matured_n,
+            pending_batches=pending_batches,
+            eligible_units_per_30_days=scenario.eligible_units_per_30_days,
+        ) >= required_n:
+            return "SCENARIO_REACHABLE_WITHIN_TERM", evaluation_date
+        if evaluation_date == search_end:
+            break
+        evaluation_date += timedelta(days=1)
+    return "SCENARIO_NOT_REACHABLE_WITHIN_TERM", None
 
 
 def implied_matured_n(
@@ -66,38 +113,24 @@ def build_reachability_rows(
     required_n: int,
 ) -> list[dict[str, object]]:
     """Return scenario-major, horizon-minor rows in stable input order."""
-    search_end = collection_end_date + timedelta(days=maturity_lag_days)
-    if pending_batches:
-        search_end = max(search_end, max(batch.maturity_date for batch in pending_batches))
+    search_end = _collection_and_maturity_end_date(
+        collection_end_date=collection_end_date,
+        maturity_lag_days=maturity_lag_days,
+        pending_batches=pending_batches,
+    )
 
     rows: list[dict[str, object]] = []
     for scenario in scenarios:
-        earliest_target_date: date | None = None
-        if current_matured_n >= required_n:
-            state = "ALREADY_AT_REQUIRED_N"
-            earliest_target_date = as_of_date
-        else:
-            evaluation_date = as_of_date
-            while evaluation_date <= search_end:
-                if implied_matured_n(
-                    evaluation_date=evaluation_date,
-                    as_of_date=as_of_date,
-                    collection_end_date=collection_end_date,
-                    maturity_lag_days=maturity_lag_days,
-                    current_matured_n=current_matured_n,
-                    pending_batches=pending_batches,
-                    eligible_units_per_30_days=scenario.eligible_units_per_30_days,
-                ) >= required_n:
-                    earliest_target_date = evaluation_date
-                    break
-                if evaluation_date == search_end:
-                    break
-                evaluation_date += timedelta(days=1)
-            state = (
-                "SCENARIO_REACHABLE_WITHIN_TERM"
-                if earliest_target_date is not None
-                else "SCENARIO_NOT_REACHABLE_WITHIN_TERM"
-            )
+        state, earliest_target_date = _scenario_target_date(
+            as_of_date=as_of_date,
+            collection_end_date=collection_end_date,
+            maturity_lag_days=maturity_lag_days,
+            current_matured_n=current_matured_n,
+            pending_batches=pending_batches,
+            scenario=scenario,
+            required_n=required_n,
+            search_end=search_end,
+        )
 
         for horizon_days in horizons_days:
             horizon_date = as_of_date + timedelta(days=horizon_days)
@@ -125,4 +158,67 @@ def build_reachability_rows(
                     ),
                 }
             )
+    return rows
+
+
+def build_summary_rows(
+    *,
+    as_of_date: date,
+    collection_end_date: date,
+    maturity_lag_days: int,
+    current_matured_n: int,
+    pending_batches: tuple[PendingBatch, ...],
+    scenarios: tuple[Scenario, ...],
+    required_n: int,
+    earliest_target_dates: Mapping[str, str | None] | None = None,
+) -> list[dict[str, object]]:
+    """Return display-only scenario decisions at the actual term end.
+
+    This keeps the Markdown decision summary aligned with reachability's
+    collection-and-maturity term even when all requested horizons fall before
+    or after that term. It is intentionally not part of the JSON or CSV
+    output contracts.
+    """
+    term_end_date = _collection_and_maturity_end_date(
+        collection_end_date=collection_end_date,
+        maturity_lag_days=maturity_lag_days,
+        pending_batches=pending_batches,
+    )
+    rows: list[dict[str, object]] = []
+    for scenario in scenarios:
+        if earliest_target_dates is None:
+            _, target_date = _scenario_target_date(
+                as_of_date=as_of_date,
+                collection_end_date=collection_end_date,
+                maturity_lag_days=maturity_lag_days,
+                current_matured_n=current_matured_n,
+                pending_batches=pending_batches,
+                scenario=scenario,
+                required_n=required_n,
+                search_end=term_end_date,
+            )
+            earliest_target_date = (
+                target_date.isoformat() if target_date is not None else None
+            )
+        else:
+            earliest_target_date = earliest_target_dates[scenario.id]
+        mature_n_at_term_end = implied_matured_n(
+            evaluation_date=term_end_date,
+            as_of_date=as_of_date,
+            collection_end_date=collection_end_date,
+            maturity_lag_days=maturity_lag_days,
+            current_matured_n=current_matured_n,
+            pending_batches=pending_batches,
+            eligible_units_per_30_days=scenario.eligible_units_per_30_days,
+        )
+        rows.append(
+            {
+                "scenario_id": scenario.id,
+                "required_n": required_n,
+                "term_end_date": term_end_date.isoformat(),
+                "mature_n_at_term_end": mature_n_at_term_end,
+                "mature_n_gap": max(required_n - mature_n_at_term_end, 0),
+                "earliest_target_date": earliest_target_date,
+            }
+        )
     return rows

@@ -5,6 +5,7 @@ from evidence_reach.reachability import (
     PendingBatch,
     Scenario,
     build_reachability_rows,
+    build_summary_rows,
     implied_matured_n,
 )
 
@@ -85,6 +86,41 @@ class ReachabilityTest(unittest.TestCase):
         )
         self.assertEqual(rows[0]["state"], "SCENARIO_REACHABLE_WITHIN_TERM")
         self.assertEqual(rows[0]["earliest_target_date"], "2030-01-15")
+
+    def test_summary_uses_the_full_term_not_the_last_requested_horizon(self) -> None:
+        summary_rows = build_summary_rows(
+            as_of_date=date(2030, 1, 1),
+            collection_end_date=date(2030, 1, 31),
+            maturity_lag_days=10,
+            current_matured_n=2,
+            pending_batches=(),
+            scenarios=(
+                Scenario(id="REACHES", eligible_units_per_30_days=30.0),
+                Scenario(id="DOES_NOT_REACH", eligible_units_per_30_days=0.0),
+            ),
+            required_n=12,
+        )
+        self.assertEqual(
+            summary_rows,
+            [
+                {
+                    "scenario_id": "REACHES",
+                    "required_n": 12,
+                    "term_end_date": "2030-02-10",
+                    "mature_n_at_term_end": 32,
+                    "mature_n_gap": 0,
+                    "earliest_target_date": "2030-01-21",
+                },
+                {
+                    "scenario_id": "DOES_NOT_REACH",
+                    "required_n": 12,
+                    "term_end_date": "2030-02-10",
+                    "mature_n_at_term_end": 2,
+                    "mature_n_gap": 10,
+                    "earliest_target_date": None,
+                },
+            ],
+        )
 
     def test_no_pending_search_ends_at_collection_end_plus_lag(self) -> None:
         rows = build_reachability_rows(

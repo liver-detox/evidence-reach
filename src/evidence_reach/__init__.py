@@ -3,4 +3,4 @@
 from .core import PlanValidationError, assess
 
 __all__ = ["PlanValidationError", "assess"]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

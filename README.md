@@ -47,6 +47,25 @@ evidence-reach assess --plan my-plan.json --out result
 - `horizons_days` lists increasing future calendar-day checkpoints. Each named
   scenario supplies its assumed `eligible_units_per_30_days`.
 
+### Interpreting the inputs
+
+A mature sample is one unit you have judged eligible and analyzable at the
+assessment date. A pending batch is already collected but does not enter that
+count until its stated maturity date.
+
+`effect` and `difference_sd` must use the same unit. For example, a synthetic
+paired-outcome plan might specify a mean difference of 2 questionnaire points
+and a standard deviation of paired differences of 8 points: `effect: 2.0` and
+`difference_sd: 8.0`. Specify those values before examining the current
+validation sample, using a documented source such as a separate pilot or a
+pre-specified analysis plan; do not choose them from the current data to make
+the result look favorable.
+
+An independent sample is an independently informative study unit (or one
+precomputed paired difference), not simply one more row in a file. In
+particular, a sequence of market-price rows is not automatically a sequence of
+independent samples.
+
 For paired work, first turn every pair into one difference. Use its target mean
 as `effect` and the standard deviation of those differences as
 `difference_sd`. Use `evidence-reach --help` or `evidence-reach assess --help`
@@ -68,6 +87,11 @@ described above. States are `ALREADY_AT_REQUIRED_N`,
 `SCENARIO_REACHABLE_WITHIN_TERM`, and
 `SCENARIO_NOT_REACHABLE_WITHIN_TERM`. “Reachable” means only that the supplied
 scenario arithmetic reaches the calculated N within its defined term.
+
+In 0.1.1, `summary.md` opens with one decision line per scenario: required N,
+the scenario-implied mature N at the actual end of the collection-and-maturity
+term, its remaining gap (zero once met), and the earliest date it reaches N.
+This is independent of which calendar horizons the plan requests.
 
 ## Python API
 

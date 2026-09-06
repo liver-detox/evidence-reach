@@ -10,8 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from evidence_reach import PlanValidationError, assess
-from evidence_reach.cli import main
+from evidence_reach import PlanValidationError, __version__, assess
+from evidence_reach.cli import _render_summary, main
 from evidence_reach.power import one_sample_t_power
 
 
@@ -92,6 +92,13 @@ def pending_count_plan_bytes(count_lexeme: str) -> bytes:
 
 
 class AssessContractTest(unittest.TestCase):
+    def test_public_version_matches_project_metadata(self) -> None:
+        self.assertEqual(__version__, "0.1.1")
+        project_metadata = (Path(__file__).parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('version = "0.1.1"', project_metadata)
+
     def test_assess_hashes_exact_input_bytes_and_returns_required_sections(self) -> None:
         raw = synthetic_plan_bytes()
         result = assess(raw)
@@ -785,8 +792,56 @@ class CliTest(unittest.TestCase):
                     line.startswith("- SYNTHETIC_")
                     for line in first["summary.md"].decode("utf-8").splitlines()
                 ),
-                3,
+                6,
             )
+
+    def test_summary_decision_lines_use_term_end_and_plain_unreachable_text(self) -> None:
+        rendered = _render_summary(
+            {
+                "statistics": {
+                    "current_matured_n": 2,
+                    "required_n": 12,
+                    "adjusted_alpha": 0.05,
+                    "current_power": 0.1,
+                    "current_mde": 1.0,
+                    "power_at_required_n": 0.8,
+                },
+                "reachability": [],
+                "limitations": [],
+            },
+            [
+                {
+                    "scenario_id": "REACHES",
+                    "required_n": 12,
+                    "term_end_date": "2030-02-10",
+                    "mature_n_at_term_end": 32,
+                    "mature_n_gap": 0,
+                    "earliest_target_date": "2030-01-21",
+                },
+                {
+                    "scenario_id": "DOES_NOT_REACH",
+                    "required_n": 12,
+                    "term_end_date": "2030-02-10",
+                    "mature_n_at_term_end": 2,
+                    "mature_n_gap": 10,
+                    "earliest_target_date": None,
+                },
+            ],
+        ).decode("utf-8")
+
+        self.assertIn(
+            "REACHES: required N 12; scenario-implied mature N at the end "
+            "of the collection-and-maturity term (2030-02-10) 32; gap 0; "
+            "earliest target date 2030-01-21.",
+            rendered,
+        )
+        self.assertIn(
+            "DOES_NOT_REACH: required N 12; scenario-implied mature N at "
+            "the end of the collection-and-maturity term (2030-02-10) 2; "
+            "gap 10; earliest target date not reached within term.",
+            rendered,
+        )
+        self.assertNotIn("earliest target date unavailable", rendered)
 
     def test_invalid_plan_writes_nothing_and_hides_plan_contents(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
